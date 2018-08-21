@@ -1,0 +1,24 @@
+{
+  "name": "fetch-lambda",
+  "version": "0.0.1",
+  "description": "fetch for lambda",
+  "main": "src/index.js",
+  "keywords": [
+    "lambda",
+    "aws",
+    "fetch"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/jameskyburz/fetch-lambda.git"
+  },
+  "author": {
+    "name": "James Kyburz",
+    "email": "james.kyburz@gmail.com"
+  },
+  "files": [
+    "src"
+  ],
+  "dependencies": {},
+  "license": "Apache-2.0"
+}
