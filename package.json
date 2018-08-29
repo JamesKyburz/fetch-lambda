@@ -1,6 +1,6 @@
 {
   "name": "fetch-lambda",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "fetch for lambda",
   "main": "src/index.js",
   "keywords": [
