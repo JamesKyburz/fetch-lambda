@@ -82,4 +82,14 @@ module.exports = (url, options = {}) => {
         }
       }
     })
+    .catch(err => {
+      return {
+        status: 502,
+        text: () => Promise.resolve(err),
+        json: () => Promise.reject(err),
+        headers: {
+          get (key) {}
+        }
+      }
+    })
 }
