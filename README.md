@@ -1,11 +1,14 @@
 # fetch-lambda 
 
-fetch for lambda
+fetch for lambda bypassing api gateway
 
-* doesn't ship with aws-sdk
 * only aws-lambda supported for now
 * doesn't fully support fetch only the basics
 * only a string body is supported
+
+The payload sent and received from lambda assumes the api gateway format.
+
+Only multiValueHeaders and multiValueQueryStringParameters are supported.
 
 [![js-standard-style](https://img.shields.io/badge/code_style-standard-brightgreen.svg)](https://github.com/feross/standard)
 [![Greenkeeper badge](https://badges.greenkeeper.io/JamesKyburz/fetch-lambda.svg)](https://greenkeeper.io/)
@@ -17,9 +20,9 @@ fetch for lambda
 ```javascript
 const fetch = require('fetch-lambda')
 
-fetch('aws-lambda://function.staging.version', {
-  method: 'POST'
-})
+fetch('aws-lambda://function:version/path', fetchOptions)
+
+// if no :version is given then the latest lambda is invoked.
 ```
 
 # license

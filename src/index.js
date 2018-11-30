@@ -1,23 +1,27 @@
+const aws4 = require('aws4')
+const fetch = require('node-fetch')
 const { URL } = require('url')
-const AWS = require('aws-sdk')
 
-module.exports = (url, options = {}) => {
-  const { protocol, username, password, host, pathname, search } = new URL(url)
+module.exports = async (url, options = {}) => {
+  const region = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION
+
+  if (!region) {
+    throw new TypeError('AWS_REGION/AWS_DEFAULT_REGION not set')
+  }
+
+  url = url.replace(/:latest/i, '')
+  const {
+    protocol,
+    username,
+    password,
+    host: functionName,
+    pathname,
+    searchParams
+  } = new URL(url)
 
   if (protocol !== 'aws-lambda:') {
     throw new TypeError('only aws-lambda protocol supported')
   }
-
-  const [functionName, stage, version] = host.split('.')
-  if (!stage) throw new TypeError('no function stage provided')
-  if (!version) throw new TypeError('no function version provided')
-
-  const body = options.body
-  if (body && typeof body !== 'string') {
-    throw new TypeError('only string body supported')
-  }
-
-  const method = options.method || 'GET'
 
   const auth = username
     ? {
@@ -26,70 +30,69 @@ module.exports = (url, options = {}) => {
     }
     : {}
 
-  const headers = Object.assign({}, auth, options.headers)
-  const timeout = options.timeout || 3000
-  const maxRetries = options.retries || 0
+  const multiValueHeaders = { ...auth, ...options.headers }
+  const searchKeys = [...searchParams.keys()]
+  const searchValues = [...searchParams.values()]
+  const multiValueQueryStringParameters =
+    searchKeys.length &&
+    searchKeys
+      .map((x, i) => [x, searchValues[i]])
+      .reduce((sum, [key, value]) => {
+        sum[key] = sum[key] || []
+        sum[key].push(value)
+        return sum
+      }, {})
 
-  const params = {
-    FunctionName: functionName,
-    InvocationType: 'RequestResponse',
-    LogType: 'None',
-    Qualifier: version,
-    Payload: JSON.stringify({
-      requestContext: {
-        path: `/${stage}${pathname}${search}`,
-        protocol: 'HTTP/1.1',
-        stage
-      },
-      httpMethod: method,
-      pathParameters: pathname,
-      queryStringParameters: search,
-      headers,
-      body,
-      isBase64Encoded: false
+  const { hostname, path, method, headers, body } = aws4.sign({
+    region,
+    method: 'POST',
+    service: 'lambda',
+    path: `2015-03-31/functions/${functionName}/invocations`,
+    body: JSON.stringify({
+      requestContext: { path: pathname },
+      body: options.body,
+      multiValueHeaders,
+      multiValueQueryStringParameters,
+      isBase64Encoded: false,
+      httpMethod: options.method
+        ? options.method
+        : options.body ? 'POST' : 'GET'
     })
-  }
-
-  const lambda = new AWS.Lambda({
-    apiVersion: '2015-03-31',
-    maxRetries,
-    httpOptions: { timeout }
   })
 
-  return lambda
-    .invoke(params)
-    .promise()
-    .then(({ Payload: payload }) => {
-      const res = JSON.parse(payload)
-      const headers = Object.keys(res.headers || {}).reduce(
-        (sum, key) =>
-          Object.assign(sum, { [key.toLowerCase()]: res.headers[key] }),
-        {}
-      )
-      const data = Buffer.from(
-        res.body || '',
-        res.isBase64Encoded ? 'base64' : undefined
-      ).toString()
+  const res = await fetch(`https://${hostname}/${path}`, {
+    method,
+    headers,
+    body,
+    timeout: options.timeout || 30000
+  })
 
-      return {
-        status: res.statusCode,
-        text: () => Promise.resolve(data),
-        json: () => Promise.resolve(JSON.parse(data)),
-        headers: {
-          get (key) {
-            return headers[key.toLowerCase()]
-          }
-        }
+  if (res.status !== 200) {
+    const { Message: message } = await res.json()
+    throw new Error(message)
+  }
+
+  const response = await res.json()
+  const responseBody = Buffer.from(
+    response.body || '',
+    response.isBase64Encoded ? 'base64' : undefined
+  ).toString()
+
+  const responseHeaders = Object.keys(response.multiValueHeaders || {}).reduce(
+    (sum, key) => ({
+      ...sum,
+      [key.toLowerCase()]: response.multiValueHeaders[key]
+    }),
+    {}
+  )
+  return {
+    headers: {
+      get (key) {
+        return responseHeaders[key.toLowerCase()].join(', ')
       }
-    })
-    .catch(err => {
-      return {
-        status: 502,
-        text: () => Promise.resolve(JSON.stringify(err)),
-        json: () => Promise.reject(err),
-        headers: {
-          get (key) {}
-        }
-      }
-    })
+    },
+    status: response.statusCode,
+    text: () => Promise.resolve(responseBody),
+    json: () => Promise.resolve(JSON.parse(responseBody))
+  }
 }
